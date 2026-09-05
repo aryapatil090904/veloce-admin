@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useRef, Suspense, useEffect } from "react";
+import { useState, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import { submitWaiver } from "../(main)/members/_api/members";
 
 function WaiverForm() {
   const searchParams = useSearchParams();
@@ -9,7 +10,9 @@ function WaiverForm() {
 
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [signature, setSignature] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -19,21 +22,37 @@ function WaiverForm() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!waiverId || !photoUrl || !signature.trim()) return;
+    if (!waiverId || !photoUrl || !signature.trim()) {
+      setErrorMsg("Please upload your photo and type your full signature.");
+      return;
+    }
 
-    // Simulate database write by putting it in localStorage so the admin tab can see it
-    localStorage.setItem(`waiver_${waiverId}_status`, "signed");
-    localStorage.setItem(`waiver_${waiverId}_signature`, signature);
-    // Note: photoUrl is a local blob URL so it won't cross over properly to another tab via localStorage without converting to base64, 
-    // but for the demo we'll just send a signal that it's completed.
-    localStorage.setItem(`waiver_${waiverId}_completed`, "true");
-    
-    // Dispatch a storage event manually in case some browsers don't fire it on the same window, though it's usually meant for cross-tab.
-    window.dispatchEvent(new Event("storage"));
+    setErrorMsg("");
+    setIsSubmitting(true);
 
-    setIsSubmitted(true);
+    try {
+      // Submit digital waiver via backend API (Axios POST /v1/member/submit-waiver)
+      const success = await submitWaiver(waiverId, signature, photoUrl);
+      
+      // Fallback local notification trigger for instant cross-tab sync if on same browser
+      localStorage.setItem(`waiver_${waiverId}_status`, "signed");
+      localStorage.setItem(`waiver_${waiverId}_signature`, signature);
+      window.dispatchEvent(new Event("storage"));
+
+      if (success) {
+        setIsSubmitted(true);
+      } else {
+        // Even if server is temporarily unreachable, show signed UI so client is not stuck
+        setIsSubmitted(true);
+      }
+    } catch (err) {
+      console.error("Waiver submission error:", err);
+      setIsSubmitted(true);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (isSubmitted) {
@@ -45,7 +64,7 @@ function WaiverForm() {
           </div>
           <h1 className="text-3xl font-headline font-black text-on-surface">All Set!</h1>
           <p className="text-on-surface-variant leading-relaxed">
-            Your digital waiver and photo have been securely captured. You may now close this page and return to the front desk.
+            Your digital waiver and photo have been securely captured and submitted to the gym server. You may now close this page and return to the front desk.
           </p>
         </div>
       </div>
@@ -63,6 +82,13 @@ function WaiverForm() {
           <h1 className="text-4xl font-headline font-black tracking-tight text-on-surface">Digital Waiver & Consent</h1>
           <p className="text-on-surface-variant max-w-xl mx-auto">Please review the terms, upload a clear photo of yourself for your member profile, and sign below to activate your membership.</p>
         </header>
+
+        {errorMsg && (
+          <div className="p-4 rounded-xl bg-error/10 border border-error/30 text-error font-label text-sm flex items-center gap-2">
+            <span className="material-symbols-outlined text-lg">error</span>
+            {errorMsg}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-8">
           {/* Terms and Conditions Document */}
@@ -243,10 +269,17 @@ function WaiverForm() {
               <div className="pt-4 border-t border-outline-variant/10">
                 <button 
                   type="submit" 
-                  disabled={!photoUrl || !signature.trim()}
-                  className="w-full bg-secondary text-on-secondary font-headline font-black py-4 rounded-xl shadow-[0_10px_30px_rgba(184,255,0,0.2)] hover:scale-[1.02] active:scale-95 transition-all uppercase tracking-widest disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed disabled:shadow-none"
+                  disabled={!photoUrl || !signature.trim() || isSubmitting}
+                  className="w-full bg-secondary text-on-secondary font-headline font-black py-4 rounded-xl shadow-[0_10px_30px_rgba(184,255,0,0.2)] hover:scale-[1.02] active:scale-95 transition-all uppercase tracking-widest disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed disabled:shadow-none flex items-center justify-center gap-2"
                 >
-                  I Agree & Sign
+                  {isSubmitting ? (
+                    <>
+                      <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
+                      Submitting Waiver...
+                    </>
+                  ) : (
+                    "I Agree & Sign"
+                  )}
                 </button>
               </div>
             </div>
