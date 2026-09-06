@@ -11,58 +11,56 @@ import {
   TableToolbar,
   TablePagination
 } from "@/components/ui/table";
-import { useState, useRef } from "react";
-import Link from "next/link";
-
-// Dummy Data
-const STAFF_DATA = [
-  {
-    id: "STF-001",
-    name: "Alex Johnson",
-    email: "alex.j@veloce.com",
-    role: "Senior Trainer",
-    shift: "Morning",
-    status: "Active",
-    avatar: "https://i.pravatar.cc/150?u=alex",
-    clients: ["Sarah Jenkins", "Marcus Thorne"]
-  },
-  {
-    id: "STF-002",
-    name: "Jordan Lee",
-    email: "jordan.l@veloce.com",
-    role: "Nutritionist",
-    shift: "Evening",
-    status: "Active",
-    avatar: "https://i.pravatar.cc/150?u=jordan",
-    clients: ["David Kim"]
-  },
-  {
-    id: "STF-003",
-    name: "Casey Smith",
-    email: "casey.s@veloce.com",
-    role: "Physical Therapist",
-    shift: "Morning",
-    status: "On Leave",
-    avatar: "https://i.pravatar.cc/150?u=casey",
-    clients: []
-  },
-];
+import { useState, useRef, useEffect, useCallback } from "react";
+import { 
+  getStaffList, 
+  getStaffStats, 
+  createStaff, 
+  updateStaff, 
+  assignClientToStaff, 
+  StaffMember, 
+  StaffStats, 
+  PaginationMeta 
+} from "./_api/staff";
 
 const AVAILABLE_CLIENTS = [
   "Elena Rodriguez",
   "Michael Chang",
   "Emma Watson",
-  "Liam Neeson"
+  "Liam Neeson",
+  "Sarah Jenkins",
+  "Marcus Thorne",
+  "David Kim"
 ];
 
 export default function StaffPage() {
-  const [staffList, setStaffList] = useState(STAFF_DATA);
+  const [staffList, setStaffList] = useState<StaffMember[]>([]);
+  const [stats, setStats] = useState<StaffStats>({
+    totalActive: 0,
+    totalAssignedClients: 0,
+    staffOnLeave: 0,
+  });
+  const [isLoading, setIsLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [selectedRoleFilter, setSelectedRoleFilter] = useState("Filter Roles");
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [paginationMeta, setPaginationMeta] = useState<PaginationMeta>({
+    totalCount: 0,
+    page: 1,
+    limit: 10,
+    totalPages: 1,
+    hasNextPage: false,
+    hasPrevPage: false,
+  });
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<string | null>(null);
   const [selectedClientToAssign, setSelectedClientToAssign] = useState("");
   
   const [isAddStaffModalOpen, setIsAddStaffModalOpen] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
+  const [isSubmittingNewStaff, setIsSubmittingNewStaff] = useState(false);
   const [newStaffForm, setNewStaffForm] = useState<{
     name: string;
     email: string;
@@ -88,6 +86,48 @@ export default function StaffPage() {
   const [cprFile, setCprFile] = useState<File | null>(null);
   const [headshotFile, setHeadshotFile] = useState<File | null>(null);
 
+  // Fetch quick insights statistics ONLY ONCE on page mount
+  useEffect(() => {
+    async function fetchStats() {
+      try {
+        const statsData = await getStaffStats();
+        if (statsData) {
+          setStats(statsData);
+        }
+      } catch (err) {
+        console.error("Failed to fetch staff stats:", err);
+      }
+    }
+    fetchStats();
+  }, []);
+
+  // Fetch staff list on search, role filter, or pagination changes
+  const loadStaff = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const res = await getStaffList({
+        search,
+        role: selectedRoleFilter,
+        page,
+        limit,
+      });
+
+      setStaffList(res.staff || []);
+
+      if (res.pagination) {
+        setPaginationMeta(res.pagination);
+      }
+    } catch (err) {
+      console.error("Failed to load staff list:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [search, selectedRoleFilter, page, limit]);
+
+  useEffect(() => {
+    loadStaff();
+  }, [loadStaff]);
+
   const handleNextStep = (e: React.FormEvent) => {
     e.preventDefault();
     setCurrentStep(prev => prev + 1);
@@ -106,26 +146,44 @@ export default function StaffPage() {
     setHeadshotFile(null);
   };
 
-  const handleAddStaffSubmit = (e: React.FormEvent) => {
+  const handleAddStaffSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newId = `STF-00${staffList.length + 1}`;
-    setStaffList([...staffList, {
-      id: newId,
-      name: newStaffForm.name,
-      email: newStaffForm.email,
-      role: newStaffForm.role,
-      status: newStaffForm.status,
-      shift: newStaffForm.shift,
-      avatar: `https://i.pravatar.cc/150?u=${newId}`,
-      clients: newStaffForm.assignedClients
-    }]);
-    resetAddStaffModal();
+    setIsSubmittingNewStaff(true);
+
+    try {
+      const created = await createStaff({
+        name: newStaffForm.name,
+        email: newStaffForm.email,
+        role: newStaffForm.role,
+        status: newStaffForm.status,
+        shift: newStaffForm.shift,
+        bio: newStaffForm.bio,
+        assignedClients: newStaffForm.assignedClients,
+      });
+
+      if (created) {
+        resetAddStaffModal();
+        loadStaff();
+        // Refresh stats
+        const updatedStats = await getStaffStats();
+        if (updatedStats) setStats(updatedStats);
+      }
+    } catch (err) {
+      console.error("Failed to create staff:", err);
+    } finally {
+      setIsSubmittingNewStaff(false);
+    }
   };
 
-  const handleShiftChange = (staffId: string, newShift: string) => {
+  const handleShiftChange = async (staffId: string, newShift: string) => {
+    // Optimistic UI update
     setStaffList(prev => prev.map(staff => 
-      staff.id === staffId ? { ...staff, shift: newShift } : staff
+      (staff._id === staffId || staff.id === staffId || staff.staffId === staffId)
+        ? { ...staff, shift: newShift } 
+        : staff
     ));
+
+    await updateStaff(staffId, { shift: newShift });
   };
 
   const handleAssignClick = (staffId: string) => {
@@ -133,15 +191,18 @@ export default function StaffPage() {
     setIsModalOpen(true);
   };
 
-  const handleAssignSubmit = (e: React.FormEvent) => {
+  const handleAssignSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedStaff || !selectedClientToAssign) return;
 
+    const targetStaff = selectedStaff;
+    const clientToAdd = selectedClientToAssign;
+
+    // Optimistic UI update
     setStaffList(prev => prev.map(staff => {
-      if (staff.id === selectedStaff) {
-        if (!staff.clients.includes(selectedClientToAssign)) {
-          return { ...staff, clients: [...staff.clients, selectedClientToAssign] };
-        }
+      const isTarget = staff._id === targetStaff || staff.id === targetStaff || staff.staffId === targetStaff;
+      if (isTarget && !staff.assignedClients.includes(clientToAdd)) {
+        return { ...staff, assignedClients: [...staff.assignedClients, clientToAdd] };
       }
       return staff;
     }));
@@ -149,9 +210,14 @@ export default function StaffPage() {
     setIsModalOpen(false);
     setSelectedClientToAssign("");
     setSelectedStaff(null);
+
+    await assignClientToStaff(targetStaff, clientToAdd);
+    // Refresh stats
+    const updatedStats = await getStaffStats();
+    if (updatedStats) setStats(updatedStats);
   };
 
-  const selectedStaffData = staffList.find(s => s.id === selectedStaff);
+  const selectedStaffData = staffList.find(s => s._id === selectedStaff || s.id === selectedStaff || s.staffId === selectedStaff);
 
   return (
     <div className="max-w-[1600px] mx-auto space-y-8 animate-in fade-in zoom-in-95 duration-700 relative">
@@ -164,7 +230,7 @@ export default function StaffPage() {
         <div className="flex gap-3">
           <button 
             onClick={() => setIsAddStaffModalOpen(true)}
-            className="px-6 py-3 bg-secondary text-on-secondary rounded-xl font-bold font-headline flex items-center gap-2 hover:shadow-[0_0_20px_rgba(184,255,0,0.3)] transition-all active:scale-95"
+            className="px-6 py-3 bg-secondary text-on-secondary rounded-xl font-bold font-headline flex items-center gap-2 hover:shadow-[0_0_20px_rgba(184,255,0,0.3)] transition-all active:scale-95 cursor-pointer"
           >
             <span className="material-symbols-outlined">person_add</span>
             New Staff
@@ -180,8 +246,8 @@ export default function StaffPage() {
           </div>
           <p className="font-label text-xs uppercase tracking-widest text-on-surface-variant mb-2">Total Active Staff</p>
           <div className="flex items-baseline gap-2">
-            <span className="text-4xl font-headline font-bold text-secondary">24</span>
-            <span className="text-xs text-secondary-dim font-label">Across 3 departments</span>
+            <span className="text-4xl font-headline font-bold text-secondary">{stats.totalActive}</span>
+            <span className="text-xs text-secondary-dim font-label">Active members</span>
           </div>
         </div>
         <div className="glass-card kinetic-gradient p-6 rounded-xl relative overflow-hidden group border border-outline-variant/10">
@@ -190,7 +256,7 @@ export default function StaffPage() {
           </div>
           <p className="font-label text-xs uppercase tracking-widest text-on-surface-variant mb-2">Total Assigned Clients</p>
           <div className="flex items-baseline gap-2">
-            <span className="text-4xl font-headline font-bold text-primary">142</span>
+            <span className="text-4xl font-headline font-bold text-primary">{stats.totalAssignedClients}</span>
             <span className="text-xs text-primary-dim font-label">Currently managed</span>
           </div>
         </div>
@@ -200,7 +266,7 @@ export default function StaffPage() {
           </div>
           <p className="font-label text-xs uppercase tracking-widest text-on-surface-variant mb-2">Staff on Leave</p>
           <div className="flex items-baseline gap-2">
-            <span className="text-4xl font-headline font-bold text-error">2</span>
+            <span className="text-4xl font-headline font-bold text-error">{stats.staffOnLeave}</span>
             <span className="text-xs text-error-dim font-label">Coverage required</span>
           </div>
         </div>
@@ -209,10 +275,35 @@ export default function StaffPage() {
       {/* Staff Table */}
       <TableContainer>
         <TableToolbar title="Staff Roster">
-          <button className="flex items-center gap-2 text-xs font-label text-on-surface-variant hover:text-on-surface transition-colors">
-            <span className="material-symbols-outlined text-sm">filter_list</span>
-            Filter Roles
-          </button>
+          <div className="relative min-w-[200px]">
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">search</span>
+            <input
+              className="w-full bg-surface-container-low border-none rounded-lg pl-9 pr-3 py-1.5 text-xs text-on-surface focus:ring-1 focus:ring-primary/50 placeholder:text-outline transition-all"
+              placeholder="Search staff..."
+              type="text"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+            />
+          </div>
+          <select 
+            value={selectedRoleFilter}
+            onChange={(e) => {
+              setSelectedRoleFilter(e.target.value);
+              setPage(1);
+            }}
+            className="bg-surface-container-low border-none rounded-lg px-3 py-1.5 text-xs text-on-surface font-label focus:ring-1 focus:ring-primary/50 cursor-pointer"
+          >
+            <option value="Filter Roles">Filter Roles</option>
+            <option value="Senior Trainer">Senior Trainer</option>
+            <option value="Trainer">Trainer</option>
+            <option value="Nutritionist">Nutritionist</option>
+            <option value="Physical Therapist">Physical Therapist</option>
+            <option value="Front Desk">Front Desk</option>
+            <option value="Manager">Manager</option>
+          </select>
           <button className="flex items-center gap-2 text-xs font-label text-secondary hover:text-secondary-fixed transition-colors">
             <span className="material-symbols-outlined text-sm">download</span>
             Export List
@@ -230,74 +321,105 @@ export default function StaffPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {staffList.map((staff) => (
-              <TableRow key={staff.id}>
-                <TableCell>
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-lg overflow-hidden flex-shrink-0">
-                      <img className="h-full w-full object-cover" alt={staff.name} src={staff.avatar} />
-                    </div>
-                    <div>
-                      <p className="font-headline font-bold text-on-surface leading-none">{staff.name}</p>
-                      <p className="text-xs text-on-surface-variant mt-1">ID: {staff.id}</p>
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <span className="px-3 py-1 bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest rounded-full border border-primary/20">
-                    {staff.role}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <select 
-                    value={(staff as any).shift || "Morning"}
-                    onChange={(e) => handleShiftChange(staff.id, e.target.value)}
-                    className="bg-surface-container-low border border-outline-variant/30 text-on-surface-variant text-[10px] font-black uppercase tracking-widest rounded-full px-3 py-1 cursor-pointer focus:ring-1 focus:ring-primary/50 outline-none"
-                  >
-                    <option value="Morning">Morning</option>
-                    <option value="Evening">Evening</option>
-                    <option value="Night">Night</option>
-                  </select>
-                </TableCell>
-                <TableCell>
-                  <span className={`flex items-center gap-2 text-xs font-black font-headline uppercase italic ${staff.status === 'Active' ? 'text-secondary' : 'text-error'}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${staff.status === 'Active' ? 'bg-secondary shadow-[0_0_8px_#c3f400]' : 'bg-error shadow-[0_0_8px_#ff716c]'}`}></span>
-                    {staff.status}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-col gap-1 my-2">
-                    {staff.clients.length > 0 ? (
-                      staff.clients.map(client => (
-                        <span key={client} className="px-3 py-1 bg-surface-container-highest text-on-surface-variant text-[10px] font-black uppercase tracking-widest rounded-full border border-white/5 w-fit">
-                          {client}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-[10px] font-label text-on-surface-variant italic uppercase tracking-widest">No Clients</span>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end items-center gap-4">
-                    <button 
-                      onClick={() => handleAssignClick(staff.id)}
-                      className="bg-primary/10 text-primary text-[10px] font-black font-headline px-3 py-1 rounded border border-primary/20 hover:bg-primary/20 transition-colors uppercase tracking-widest"
-                    >
-                      ASSIGN
-                    </button>
-                    <button className="text-on-surface-variant hover:text-on-surface transition-colors p-2 rounded-lg hover:bg-surface-container-highest">
-                      <span className="material-symbols-outlined">more_horiz</span>
-                    </button>
-                  </div>
+            {isLoading ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center py-8 text-on-surface-variant font-label">
+                  Loading staff members...
                 </TableCell>
               </TableRow>
-            ))}
+            ) : staffList.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center py-8 text-on-surface-variant font-label">
+                  No staff members found.
+                </TableCell>
+              </TableRow>
+            ) : (
+              staffList.map((staff) => {
+                const targetId = staff._id || staff.id || staff.staffId || "";
+                return (
+                  <TableRow key={targetId}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-lg overflow-hidden flex-shrink-0 bg-surface-container-high flex items-center justify-center">
+                          {staff.avatar ? (
+                            <img className="h-full w-full object-cover" alt={staff.name} src={staff.avatar} />
+                          ) : (
+                            <span className="material-symbols-outlined text-on-surface-variant">person</span>
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-headline font-bold text-on-surface leading-none">{staff.name}</p>
+                          <p className="text-xs text-on-surface-variant mt-1">ID: {staff.staffId || staff.id || "STF"}</p>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span className="px-3 py-1 bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest rounded-full border border-primary/20">
+                        {staff.role}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <select 
+                        value={staff.shift || "Morning"}
+                        onChange={(e) => handleShiftChange(targetId, e.target.value)}
+                        className="bg-surface-container-low border border-outline-variant/30 text-on-surface-variant text-[10px] font-black uppercase tracking-widest rounded-full px-3 py-1 cursor-pointer focus:ring-1 focus:ring-primary/50 outline-none"
+                      >
+                        <option value="Morning">Morning</option>
+                        <option value="Evening">Evening</option>
+                        <option value="Night">Night</option>
+                      </select>
+                    </TableCell>
+                    <TableCell>
+                      <span className={`flex items-center gap-2 text-xs font-black font-headline uppercase italic ${staff.status === 'Active' ? 'text-secondary' : 'text-error'}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${staff.status === 'Active' ? 'bg-secondary shadow-[0_0_8px_#c3f400]' : 'bg-error shadow-[0_0_8px_#ff716c]'}`}></span>
+                        {staff.status}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-1 my-2">
+                        {staff.assignedClients && staff.assignedClients.length > 0 ? (
+                          staff.assignedClients.map(client => (
+                            <span key={client} className="px-3 py-1 bg-surface-container-highest text-on-surface-variant text-[10px] font-black uppercase tracking-widest rounded-full border border-white/5 w-fit">
+                              {client}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-[10px] font-label text-on-surface-variant italic uppercase tracking-widest">No Clients</span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end items-center gap-4">
+                        <button 
+                          onClick={() => handleAssignClick(targetId)}
+                          className="bg-primary/10 text-primary text-[10px] font-black font-headline px-3 py-1 rounded border border-primary/20 hover:bg-primary/20 transition-colors uppercase tracking-widest cursor-pointer"
+                        >
+                          ASSIGN
+                        </button>
+                        <button className="text-on-surface-variant hover:text-on-surface transition-colors p-2 rounded-lg hover:bg-surface-container-highest">
+                          <span className="material-symbols-outlined">more_horiz</span>
+                        </button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
           </TableBody>
         </Table>
         
         {/* Pagination Footer */}
-        <TablePagination />
+        <TablePagination
+          page={page}
+          limit={limit}
+          totalCount={paginationMeta.totalCount}
+          totalPages={paginationMeta.totalPages}
+          onPageChange={(newPage) => setPage(newPage)}
+          onLimitChange={(newLimit) => {
+            setLimit(newLimit);
+            setPage(1);
+          }}
+        />
       </TableContainer>
 
       {/* Assign Client Modal Overlay */}
@@ -345,7 +467,7 @@ export default function StaffPage() {
                 </button>
                 <button 
                   type="submit"
-                  className="flex-1 px-4 py-3 rounded-xl font-bold text-on-primary bg-primary hover:bg-primary/90 transition-colors shadow-[0_0_15px_rgba(109,221,255,0.3)]"
+                  className="flex-1 px-4 py-3 rounded-xl font-bold text-on-primary bg-primary hover:bg-primary/90 transition-colors shadow-[0_0_15px_rgba(109,221,255,0.3)] cursor-pointer"
                 >
                   Assign Client
                 </button>
@@ -409,7 +531,10 @@ export default function StaffPage() {
                         className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl px-4 py-3 text-on-surface focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all outline-none"
                       >
                         <option>Front Desk</option>
+                        <option>Senior Trainer</option>
                         <option>Trainer</option>
+                        <option>Nutritionist</option>
+                        <option>Physical Therapist</option>
                         <option>Manager</option>
                       </select>
                     </div>
@@ -578,9 +703,19 @@ export default function StaffPage() {
                 
                 <button 
                   type="submit"
-                  className="flex-1 px-4 py-3 rounded-xl font-bold text-on-secondary bg-secondary hover:bg-secondary/90 transition-colors shadow-[0_0_15px_rgba(184,255,0,0.3)]"
+                  disabled={isSubmittingNewStaff}
+                  className="flex-1 px-4 py-3 rounded-xl font-bold text-on-secondary bg-secondary hover:bg-secondary/90 transition-colors shadow-[0_0_15px_rgba(184,255,0,0.3)] cursor-pointer flex items-center justify-center gap-2"
                 >
-                  {currentStep < 4 ? 'Next' : 'Complete'}
+                  {isSubmittingNewStaff ? (
+                    <>
+                      <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
+                      Saving...
+                    </>
+                  ) : currentStep < 4 ? (
+                    'Next'
+                  ) : (
+                    'Complete'
+                  )}
                 </button>
               </div>
             </form>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   TableContainer,
   Table,
@@ -12,31 +12,109 @@ import {
   TableToolbar,
   TablePagination
 } from "@/components/ui/table";
-
-// Dummy Data for Inquiries
-const INQUIRY_DATA = [
-  { id: "INQ-001", name: "Sam Wilson", phone: "+1 (555) 123-4567", email: "sam.w@example.com", status: "Hot", date: "Oct 24", source: "Walk-in", location: "Downtown" },
-  { id: "INQ-002", name: "Jessica Lee", phone: "+1 (555) 987-6543", email: "jess.lee@example.com", status: "Warm", date: "Oct 23", source: "Website", location: "Northside" },
-  { id: "INQ-003", name: "David Chen", phone: "+1 (555) 555-0100", email: "david.c@example.com", status: "Cold", date: "Oct 20", source: "Instagram", location: "West End" },
-];
-
-// Dummy Data for Referrals
-const REFERRAL_DATA = [
-  { id: "REF-001", referrer: "Elena Rodriguez", invitee: "Maria Garcia", status: "Joined", date: "Oct 22", rewardGranted: false },
-  { id: "REF-002", referrer: "Michael Chang", invitee: "Kevin Wu", status: "Pending", date: "Oct 24", rewardGranted: false },
-];
+import { 
+  getInquiryList, 
+  getReferralList, 
+  createInquiry, 
+  grantReferralReward, 
+  Inquiry, 
+  Referral, 
+  PaginationMeta 
+} from "./_api/inquries";
 
 export default function InquiriesPage() {
   const [activeTab, setActiveTab] = useState<"inquiries" | "referrals">("inquiries");
   
   // Inquiry State
-  const [inquiries, setInquiries] = useState(INQUIRY_DATA);
+  const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [isAddInquiryModalOpen, setIsAddInquiryModalOpen] = useState(false);
+  const [isSubmittingInquiry, setIsSubmittingInquiry] = useState(false);
   const [newInquiryForm, setNewInquiryForm] = useState({
     name: '', phone: '', email: '', status: 'Cold', source: 'Walk-in', location: 'Virar West'
   });
 
   const [formErrors, setFormErrors] = useState<{name?: string, phone?: string, email?: string}>({});
+
+  // Referrals State
+  const [referrals, setReferrals] = useState<Referral[]>([]);
+  const [isRewardModalOpen, setIsRewardModalOpen] = useState(false);
+  const [selectedReferralId, setSelectedReferralId] = useState<string | null>(null);
+  const [rewardType, setRewardType] = useState("Free Month");
+  const [isSubmittingReward, setIsSubmittingReward] = useState(false);
+
+  // Common Table & Pagination State
+  const [isLoading, setIsLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState("Filter Status");
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [paginationMeta, setPaginationMeta] = useState<PaginationMeta>({
+    totalCount: 0,
+    page: 1,
+    limit: 10,
+    totalPages: 1,
+    hasNextPage: false,
+    hasPrevPage: false,
+  });
+
+  // Fetch Inquiries
+  const loadInquiries = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const res = await getInquiryList({
+        search,
+        status: selectedStatusFilter,
+        page,
+        limit,
+      });
+
+      setInquiries(res.inquiries || []);
+      if (res.pagination) {
+        setPaginationMeta(res.pagination);
+      }
+    } catch (err) {
+      console.error("Failed to load inquiries:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [search, selectedStatusFilter, page, limit]);
+
+  // Fetch Referrals
+  const loadReferrals = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const res = await getReferralList({
+        search,
+        status: selectedStatusFilter,
+        page,
+        limit,
+      });
+
+      setReferrals(res.referrals || []);
+      if (res.pagination) {
+        setPaginationMeta(res.pagination);
+      }
+    } catch (err) {
+      console.error("Failed to load referrals:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [search, selectedStatusFilter, page, limit]);
+
+  useEffect(() => {
+    if (activeTab === "inquiries") {
+      loadInquiries();
+    } else {
+      loadReferrals();
+    }
+  }, [activeTab, loadInquiries, loadReferrals]);
+
+  const handleTabChange = (tab: "inquiries" | "referrals") => {
+    setActiveTab(tab);
+    setPage(1);
+    setSearch("");
+    setSelectedStatusFilter("Filter Status");
+  };
 
   const validateForm = () => {
     const errors: {name?: string, phone?: string, email?: string} = {};
@@ -59,49 +137,60 @@ export default function InquiriesPage() {
     return Object.keys(errors).length === 0;
   };
 
-  const handleAddInquirySubmit = (e: React.FormEvent) => {
+  const handleAddInquirySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateForm()) return;
     
-    const newId = `INQ-00${inquiries.length + 1}`;
-    setInquiries([{
-      id: newId,
-      name: newInquiryForm.name,
-      phone: newInquiryForm.phone,
-      email: newInquiryForm.email,
-      status: newInquiryForm.status,
-      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      source: newInquiryForm.source,
-      location: newInquiryForm.location
-    }, ...inquiries]);
-    setIsAddInquiryModalOpen(false);
-    setNewInquiryForm({ name: '', phone: '', email: '', status: 'Cold', source: 'Walk-in', location: 'Virar West' });
-    setFormErrors({});
+    setIsSubmittingInquiry(true);
+    try {
+      const created = await createInquiry({
+        name: newInquiryForm.name,
+        phone: newInquiryForm.phone,
+        email: newInquiryForm.email,
+        status: newInquiryForm.status,
+        source: newInquiryForm.source,
+        location: newInquiryForm.location,
+      });
+
+      if (created) {
+        setIsAddInquiryModalOpen(false);
+        setNewInquiryForm({ name: '', phone: '', email: '', status: 'Cold', source: 'Walk-in', location: 'Virar West' });
+        setFormErrors({});
+        loadInquiries();
+      }
+    } catch (err) {
+      console.error("Failed to add inquiry:", err);
+    } finally {
+      setIsSubmittingInquiry(false);
+    }
   };
   
-  // Referral Reward Modal State
-  const [isRewardModalOpen, setIsRewardModalOpen] = useState(false);
-  const [selectedReferral, setSelectedReferral] = useState<string | null>(null);
-  const [referrals, setReferrals] = useState(REFERRAL_DATA);
-  const [rewardType, setRewardType] = useState("Free Month");
-
   const openRewardModal = (id: string) => {
-    setSelectedReferral(id);
+    setSelectedReferralId(id);
     setIsRewardModalOpen(true);
   };
 
-  const handleGrantReward = (e: React.FormEvent) => {
+  const handleGrantRewardSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedReferral) return;
+    if (!selectedReferralId) return;
 
-    setReferrals(prev => prev.map(ref => 
-      ref.id === selectedReferral ? { ...ref, rewardGranted: true } : ref
-    ));
-    setIsRewardModalOpen(false);
-    setSelectedReferral(null);
+    setIsSubmittingReward(true);
+    try {
+      const updated = await grantReferralReward(selectedReferralId, rewardType);
+
+      if (updated) {
+        setIsRewardModalOpen(false);
+        setSelectedReferralId(null);
+        loadReferrals();
+      }
+    } catch (err) {
+      console.error("Failed to grant reward:", err);
+    } finally {
+      setIsSubmittingReward(false);
+    }
   };
 
-  const currentReferralData = referrals.find(r => r.id === selectedReferral);
+  const currentReferralData = referrals.find(r => r._id === selectedReferralId || r.id === selectedReferralId || r.referralId === selectedReferralId);
 
   return (
     <div className="max-w-[1600px] mx-auto space-y-8 animate-in fade-in zoom-in-95 duration-700 relative">
@@ -115,8 +204,8 @@ export default function InquiriesPage() {
         {/* Custom Tabs */}
         <div className="flex bg-surface-container-high rounded-xl p-1 gap-1">
           <button 
-            onClick={() => setActiveTab("inquiries")}
-            className={`px-6 py-2 rounded-lg font-bold font-headline text-sm transition-all ${
+            onClick={() => handleTabChange("inquiries")}
+            className={`px-6 py-2 rounded-lg font-bold font-headline text-sm transition-all cursor-pointer ${
               activeTab === "inquiries" 
                 ? "bg-primary text-on-primary shadow-md" 
                 : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest"
@@ -125,8 +214,8 @@ export default function InquiriesPage() {
             Inquiry List
           </button>
           <button 
-            onClick={() => setActiveTab("referrals")}
-            className={`px-6 py-2 rounded-lg font-bold font-headline text-sm transition-all ${
+            onClick={() => handleTabChange("referrals")}
+            className={`px-6 py-2 rounded-lg font-bold font-headline text-sm transition-all cursor-pointer ${
               activeTab === "referrals" 
                 ? "bg-secondary text-on-secondary shadow-md" 
                 : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest"
@@ -144,17 +233,39 @@ export default function InquiriesPage() {
           {/* Inquiries Table */}
           <TableContainer>
             <TableToolbar title="Recent Inquiries">
-              <button className="flex items-center gap-2 text-xs font-label text-on-surface-variant hover:text-on-surface transition-colors">
-                <span className="material-symbols-outlined text-sm">filter_list</span>
-                Filter Status
-              </button>
+              <div className="relative min-w-[200px]">
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">search</span>
+                <input
+                  className="w-full bg-surface-container-low border-none rounded-lg pl-9 pr-3 py-1.5 text-xs text-on-surface focus:ring-1 focus:ring-primary/50 placeholder:text-outline transition-all"
+                  placeholder="Search inquiries..."
+                  type="text"
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setPage(1);
+                  }}
+                />
+              </div>
+              <select 
+                value={selectedStatusFilter}
+                onChange={(e) => {
+                  setSelectedStatusFilter(e.target.value);
+                  setPage(1);
+                }}
+                className="bg-surface-container-low border-none rounded-lg px-3 py-1.5 text-xs text-on-surface font-label focus:ring-1 focus:ring-primary/50 cursor-pointer"
+              >
+                <option value="Filter Status">Filter Status</option>
+                <option value="Hot">Hot</option>
+                <option value="Warm">Warm</option>
+                <option value="Cold">Cold</option>
+              </select>
               <button className="flex items-center gap-2 text-xs font-label text-secondary hover:text-secondary-fixed transition-colors">
                 <span className="material-symbols-outlined text-sm">download</span>
                 Export Logs
               </button>
               <button 
                 onClick={() => setIsAddInquiryModalOpen(true)}
-                className="px-4 py-2 bg-primary text-on-primary rounded-xl font-bold font-headline flex items-center gap-2 hover:shadow-[0_0_15px_rgba(109,221,255,0.3)] transition-all active:scale-95 text-sm ml-2"
+                className="px-4 py-2 bg-primary text-on-primary rounded-xl font-bold font-headline flex items-center gap-2 hover:shadow-[0_0_15px_rgba(109,221,255,0.3)] transition-all active:scale-95 text-sm ml-2 cursor-pointer"
               >
                 <span className="material-symbols-outlined text-sm">person_add</span>
                 New Inquiry
@@ -171,53 +282,80 @@ export default function InquiriesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {inquiries.map((inquiry) => (
-                  <TableRow key={inquiry.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-lg overflow-hidden flex-shrink-0">
-                          <img className="h-full w-full object-cover" alt={inquiry.name} src={`https://ui-avatars.com/api/?name=${encodeURIComponent(inquiry.name)}&background=random&color=fff`} />
-                        </div>
-                        <div>
-                          <p className="font-headline font-bold text-on-surface leading-none">{inquiry.name}</p>
-                          <p className="text-xs text-on-surface-variant mt-1">ID: {inquiry.id} • {inquiry.date}</p>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm font-label">
-                        <p className="text-on-surface">{inquiry.phone}</p>
-                        <p className="text-xs text-on-surface-variant">{inquiry.email}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="px-3 py-1 bg-surface-container-highest text-on-surface-variant text-[10px] font-black uppercase tracking-widest rounded-full border border-white/5">
-                        {inquiry.source}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <span className={`flex items-center gap-2 text-xs font-black font-headline uppercase italic ${
-                        inquiry.status === 'Hot' ? 'text-primary' : 
-                        inquiry.status === 'Warm' ? 'text-tertiary' : 'text-error'
-                      }`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${
-                          inquiry.status === 'Hot' ? 'bg-primary shadow-[0_0_8px_#6dddff]' : 
-                          inquiry.status === 'Warm' ? 'bg-tertiary shadow-[0_0_8px_#ffb2d9]' : 'bg-error shadow-[0_0_8px_#ff716c]'
-                        }`}></span>
-                        {inquiry.status}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <button className="p-2 text-on-surface-variant hover:text-on-surface transition-colors rounded-full hover:bg-surface-container-high">
-                        <span className="material-symbols-outlined">more_horiz</span>
-                      </button>
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-8 text-on-surface-variant font-label">
+                      Loading inquiries...
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : inquiries.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-8 text-on-surface-variant font-label">
+                      No inquiries found.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  inquiries.map((inquiry) => {
+                    const targetId = inquiry._id || inquiry.id || inquiry.inquiryId || "";
+                    return (
+                      <TableRow key={targetId}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-lg overflow-hidden flex-shrink-0">
+                              <img className="h-full w-full object-cover" alt={inquiry.name} src={`https://ui-avatars.com/api/?name=${encodeURIComponent(inquiry.name)}&background=random&color=fff`} />
+                            </div>
+                            <div>
+                              <p className="font-headline font-bold text-on-surface leading-none">{inquiry.name}</p>
+                              <p className="text-xs text-on-surface-variant mt-1">ID: {inquiry.inquiryId || inquiry.id || "INQ"} • {inquiry.dateStr || "Today"}</p>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm font-label">
+                            <p className="text-on-surface">{inquiry.phone}</p>
+                            <p className="text-xs text-on-surface-variant">{inquiry.email}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="px-3 py-1 bg-surface-container-highest text-on-surface-variant text-[10px] font-black uppercase tracking-widest rounded-full border border-white/5">
+                            {inquiry.source}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <span className={`flex items-center gap-2 text-xs font-black font-headline uppercase italic ${
+                            inquiry.status === 'Hot' ? 'text-primary' : 
+                            inquiry.status === 'Warm' ? 'text-tertiary' : 'text-error'
+                          }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${
+                              inquiry.status === 'Hot' ? 'bg-primary shadow-[0_0_8px_#6dddff]' : 
+                              inquiry.status === 'Warm' ? 'bg-tertiary shadow-[0_0_8px_#ffb2d9]' : 'bg-error shadow-[0_0_8px_#ff716c]'
+                            }`}></span>
+                            {inquiry.status}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <button className="p-2 text-on-surface-variant hover:text-on-surface transition-colors rounded-full hover:bg-surface-container-high">
+                            <span className="material-symbols-outlined">more_horiz</span>
+                          </button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
               </TableBody>
             </Table>
             {/* Pagination Footer */}
-            <TablePagination />
+            <TablePagination
+              page={page}
+              limit={limit}
+              totalCount={paginationMeta.totalCount}
+              totalPages={paginationMeta.totalPages}
+              onPageChange={(newPage) => setPage(newPage)}
+              onLimitChange={(newLimit) => {
+                setLimit(newLimit);
+                setPage(1);
+              }}
+            />
           </TableContainer>
         </div>
       )}
@@ -227,10 +365,19 @@ export default function InquiriesPage() {
         <div className="space-y-6 animate-in slide-in-from-bottom-4 fade-in duration-500">
           <TableContainer>
             <TableToolbar title="Member Referrals">
-              <button className="flex items-center gap-2 text-xs font-label text-on-surface-variant hover:text-on-surface transition-colors">
-                <span className="material-symbols-outlined text-sm">filter_list</span>
-                Filter Status
-              </button>
+              <div className="relative min-w-[200px]">
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">search</span>
+                <input
+                  className="w-full bg-surface-container-low border-none rounded-lg pl-9 pr-3 py-1.5 text-xs text-on-surface focus:ring-1 focus:ring-primary/50 placeholder:text-outline transition-all"
+                  placeholder="Search referrals..."
+                  type="text"
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setPage(1);
+                  }}
+                />
+              </div>
               <button className="flex items-center gap-2 text-xs font-label text-secondary hover:text-secondary-fixed transition-colors">
                 <span className="material-symbols-outlined text-sm">download</span>
                 Export Logs
@@ -247,61 +394,88 @@ export default function InquiriesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {referrals.map((ref) => (
-                  <TableRow key={ref.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-lg overflow-hidden flex-shrink-0">
-                          <img className="h-full w-full object-cover" alt={ref.referrer} src={`https://ui-avatars.com/api/?name=${encodeURIComponent(ref.referrer)}&background=random&color=fff`} />
-                        </div>
-                        <div>
-                          <p className="font-headline font-bold text-on-surface leading-none">{ref.referrer}</p>
-                          <p className="text-xs text-secondary mt-1 font-bold">Existing Member</p>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <p className="font-headline font-bold text-on-surface">{ref.invitee}</p>
-                      <p className="text-xs text-on-surface-variant mt-1">New Prospect</p>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm font-label text-on-surface-variant">{ref.date}</span>
-                    </TableCell>
-                    <TableCell>
-                      <span className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-full border ${
-                        ref.status === 'Joined' 
-                          ? 'bg-secondary/10 text-secondary border-secondary/20' 
-                          : 'bg-surface-container-highest text-on-surface-variant border-white/5'
-                      }`}>
-                        {ref.status}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {ref.status === 'Joined' ? (
-                        ref.rewardGranted ? (
-                          <span className="text-xs font-bold text-tertiary flex items-center justify-end gap-1">
-                            <span className="material-symbols-outlined text-sm">check_circle</span>
-                            Reward Granted
-                          </span>
-                        ) : (
-                          <button 
-                            onClick={() => openRewardModal(ref.id)}
-                            className="bg-secondary/10 text-secondary text-[10px] font-black font-headline px-3 py-1 rounded border border-secondary/20 hover:bg-secondary/20 transition-colors uppercase tracking-widest flex items-center gap-1 ml-auto"
-                          >
-                            <span className="material-symbols-outlined text-sm">redeem</span>
-                            Grant Reward
-                          </button>
-                        )
-                      ) : (
-                        <span className="text-xs font-label text-on-surface-variant italic">Waiting for conversion</span>
-                      )}
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-8 text-on-surface-variant font-label">
+                      Loading referrals...
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : referrals.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-8 text-on-surface-variant font-label">
+                      No referrals found.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  referrals.map((ref) => {
+                    const targetId = ref._id || ref.id || ref.referralId || "";
+                    return (
+                      <TableRow key={targetId}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-lg overflow-hidden flex-shrink-0">
+                              <img className="h-full w-full object-cover" alt={ref.referrer} src={`https://ui-avatars.com/api/?name=${encodeURIComponent(ref.referrer)}&background=random&color=fff`} />
+                            </div>
+                            <div>
+                              <p className="font-headline font-bold text-on-surface leading-none">{ref.referrer}</p>
+                              <p className="text-xs text-secondary mt-1 font-bold">Existing Member</p>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <p className="font-headline font-bold text-on-surface">{ref.invitee}</p>
+                          <p className="text-xs text-on-surface-variant mt-1">New Prospect</p>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm font-label text-on-surface-variant">{ref.dateStr || "Oct 22"}</span>
+                        </TableCell>
+                        <TableCell>
+                          <span className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-full border ${
+                            ref.status === 'Joined' 
+                              ? 'bg-secondary/10 text-secondary border-secondary/20' 
+                              : 'bg-surface-container-highest text-on-surface-variant border-white/5'
+                          }`}>
+                            {ref.status}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {ref.status === 'Joined' ? (
+                            ref.rewardGranted ? (
+                              <span className="text-xs font-bold text-tertiary flex items-center justify-end gap-1">
+                                <span className="material-symbols-outlined text-sm">check_circle</span>
+                                {ref.rewardType ? `Granted (${ref.rewardType})` : "Reward Granted"}
+                              </span>
+                            ) : (
+                              <button 
+                                onClick={() => openRewardModal(targetId)}
+                                className="bg-secondary/10 text-secondary text-[10px] font-black font-headline px-3 py-1 rounded border border-secondary/20 hover:bg-secondary/20 transition-colors uppercase tracking-widest flex items-center gap-1 ml-auto cursor-pointer"
+                              >
+                                <span className="material-symbols-outlined text-sm">redeem</span>
+                                Grant Reward
+                              </button>
+                            )
+                          ) : (
+                            <span className="text-xs font-label text-on-surface-variant italic">Waiting for conversion</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
               </TableBody>
             </Table>
             {/* Pagination Footer */}
-            <TablePagination />
+            <TablePagination
+              page={page}
+              limit={limit}
+              totalCount={paginationMeta.totalCount}
+              totalPages={paginationMeta.totalPages}
+              onPageChange={(newPage) => setPage(newPage)}
+              onLimitChange={(newLimit) => {
+                setLimit(newLimit);
+                setPage(1);
+              }}
+            />
           </TableContainer>
         </div>
       )}
@@ -328,7 +502,7 @@ export default function InquiriesPage() {
               </button>
             </div>
             
-            <form onSubmit={handleGrantReward} className="space-y-6">
+            <form onSubmit={handleGrantRewardSubmit} className="space-y-6">
               <div>
                 <label className="block text-sm font-label text-on-surface mb-2">Select Reward for Member</label>
                 <select 
@@ -363,9 +537,17 @@ export default function InquiriesPage() {
                 </button>
                 <button 
                   type="submit"
-                  className="flex-1 px-4 py-3 rounded-xl font-bold text-on-secondary bg-secondary hover:bg-secondary/90 transition-colors shadow-[0_0_15px_rgba(184,255,0,0.3)]"
+                  disabled={isSubmittingReward}
+                  className="flex-1 px-4 py-3 rounded-xl font-bold text-on-secondary bg-secondary hover:bg-secondary/90 transition-colors shadow-[0_0_15px_rgba(184,255,0,0.3)] cursor-pointer flex items-center justify-center gap-2"
                 >
-                  Confirm & Grant
+                  {isSubmittingReward ? (
+                    <>
+                      <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
+                      Granting...
+                    </>
+                  ) : (
+                    "Confirm & Grant"
+                  )}
                 </button>
               </div>
             </form>
@@ -413,7 +595,6 @@ export default function InquiriesPage() {
                     maxLength={10}
                     value={newInquiryForm.phone}
                     onChange={(e) => {
-                      // Only allow numbers to be typed
                       const val = e.target.value.replace(/[^0-9]/g, '');
                       setNewInquiryForm({...newInquiryForm, phone: val});
                       if (formErrors.phone) setFormErrors({...formErrors, phone: undefined});
@@ -487,9 +668,17 @@ export default function InquiriesPage() {
                 </button>
                 <button 
                   type="submit"
-                  className="flex-1 px-4 py-3 rounded-xl font-bold text-on-primary bg-primary hover:bg-primary/90 transition-colors shadow-[0_0_15px_rgba(109,221,255,0.3)]"
+                  disabled={isSubmittingInquiry}
+                  className="flex-1 px-4 py-3 rounded-xl font-bold text-on-primary bg-primary hover:bg-primary/90 transition-colors shadow-[0_0_15px_rgba(109,221,255,0.3)] cursor-pointer flex items-center justify-center gap-2"
                 >
-                  Add Lead
+                  {isSubmittingInquiry ? (
+                    <>
+                      <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
+                      Saving...
+                    </>
+                  ) : (
+                    "Add Lead"
+                  )}
                 </button>
               </div>
             </form>
