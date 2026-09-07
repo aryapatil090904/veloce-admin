@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   TableContainer,
   Table,
@@ -12,9 +12,79 @@ import {
   TableToolbar,
   TablePagination
 } from "@/components/ui/table";
+import { getAttendanceList, AttendanceRecord, PaginationMeta } from './_api/attendance';
 
 export default function AttendancePage() {
   const [historyMember, setHistoryMember] = useState<{name: string, id: string, avatar: string} | null>(null);
+
+  // State for API integration
+  const [attendanceData, setAttendanceData] = useState<AttendanceRecord[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [search, setSearch] = useState<string>('');
+  const [debouncedSearch, setDebouncedSearch] = useState<string>('');
+  const [page, setPage] = useState<number>(1);
+  const [limit, setLimit] = useState<number>(10);
+  const [currentlyCheckedIn, setCurrentlyCheckedIn] = useState<number>(0);
+  const [pagination, setPagination] = useState<PaginationMeta>({
+    currentPage: 1,
+    limit: 10,
+    totalRecords: 0,
+    totalPages: 1,
+    hasNextPage: false,
+    hasPreviousPage: false,
+  });
+
+  // Debounce search input
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 400);
+    return () => clearTimeout(handler);
+  }, [search]);
+
+  // Fetch attendance list on page/limit/search change
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchData() {
+      setLoading(true);
+      const res = await getAttendanceList({
+        page,
+        limit,
+        search: debouncedSearch,
+      });
+      if (isMounted) {
+        setAttendanceData(res.data);
+        setCurrentlyCheckedIn(res.currentlyCheckInCount);
+        setPagination(res.pagination);
+        setLoading(false);
+      }
+    }
+    fetchData();
+    return () => {
+      isMounted = false;
+    };
+  }, [page, limit, debouncedSearch]);
+
+  const formatTime = (timeString: string | null) => {
+    if (!timeString) return "—";
+    try {
+      const date = new Date(timeString);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch {
+      return timeString;
+    }
+  };
+
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return "";
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch {
+      return dateString;
+    }
+  };
 
   return (
     <div className="max-w-[1600px] mx-auto space-y-8 animate-in fade-in zoom-in-95 duration-700">
@@ -51,13 +121,13 @@ export default function AttendancePage() {
               </defs>
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-5xl font-black font-headline text-on-surface leading-none">75%</span>
-              <span className="text-[10px] font-bold font-label text-on-surface-variant uppercase mt-1">Capacity</span>
+              <span className="text-5xl font-black font-headline text-on-surface leading-none">{currentlyCheckedIn}</span>
+              <span className="text-[10px] font-bold font-label text-on-surface-variant uppercase mt-1">Checked In Now</span>
             </div>
           </div>
           <div className="text-center">
-            <h3 className="font-headline font-bold text-lg">182 / 240</h3>
-            <p className="text-sm text-on-surface-variant font-label">Members currently on floor</p>
+            <h3 className="font-headline font-bold text-lg">{currentlyCheckedIn} Members</h3>
+            <p className="text-sm text-on-surface-variant font-label">Members currently checked in on floor</p>
           </div>
           {/* Ambient Glow */}
           <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-primary/10 blur-[60px] rounded-full"></div>
@@ -109,7 +179,13 @@ export default function AttendancePage() {
         <TableToolbar title="Live Check-in Log">
           <div className="relative mr-auto w-64 ml-4 hidden md:block">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">search</span>
-            <input className="w-full bg-surface-container-low border border-outline-variant/20 rounded-lg pl-9 pr-4 py-2 text-xs focus:ring-1 focus:ring-secondary outline-none text-on-surface placeholder:text-on-surface-variant/50" placeholder="Manual Check-In Search..." type="text" />
+            <input 
+              className="w-full bg-surface-container-low border border-outline-variant/20 rounded-lg pl-9 pr-4 py-2 text-xs focus:ring-1 focus:ring-secondary outline-none text-on-surface placeholder:text-on-surface-variant/50" 
+              placeholder="Manual Check-In Search..." 
+              type="text" 
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
           <button className="flex items-center gap-2 text-xs font-label text-on-surface-variant hover:text-on-surface transition-colors">
             <span className="material-symbols-outlined text-sm">filter_list</span>
@@ -124,133 +200,101 @@ export default function AttendancePage() {
           <TableHeader>
             <TableRow>
               <TableHead>Member</TableHead>
-              <TableHead>Time</TableHead>
+              <TableHead>Time / Date</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Membership</TableHead>
+              <TableHead>Membership / Role</TableHead>
               <TableHead className="text-right">Action</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {/* Row 1 */}
-            <TableRow>
-              <TableCell>
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-lg overflow-hidden flex-shrink-0">
-                    <img className="h-full w-full object-cover" alt="Member" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAi3_iyBYC0XnhMB_kmJyZwxyPodKyDbfanHYqGHO_ImJsaLyXJn68QpSrj2830MuHQLQ7OWARjG23CFP2NsY-Y6weKz5Q67rh8EEAoQTdWoEn-ZEksdaI2o87OEnzyfhvh2GmZOo7R5WsS6DXnp2mfgmuM_kCV9Ngpy9sr5k-SOJrhJZCMySyfNs-o5no7abS71-TJbiTXVpeWoLrJJxdwPbcQxGtTE_QW6_ciY7W2UfBognkgdpEtmN7kHNlm4clEBK2j3VIRFNo" />
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center py-12 text-on-surface-variant">
+                  <div className="flex items-center justify-center gap-2">
+                    <span className="material-symbols-outlined animate-spin text-lg">progress_activity</span>
+                    <span>Loading attendance records...</span>
                   </div>
-                  <div>
-                    <p className="font-headline font-bold text-on-surface leading-none">Marcus Sterling</p>
-                    <p className="text-xs text-on-surface-variant mt-1">ID: #89211</p>
-                  </div>
-                </div>
-              </TableCell>
-              <TableCell>
-                <p className="font-headline font-medium">14:52:10</p>
-                <p className="text-[10px] text-on-surface-variant font-label">2 minutes ago</p>
-              </TableCell>
-              <TableCell>
-                <span className="flex items-center gap-2 text-secondary text-xs font-black font-headline uppercase italic">
-                  <span className="w-1.5 h-1.5 rounded-full bg-secondary shadow-[0_0_8px_#c3f400]"></span>
-                  Checked In
-                </span>
-              </TableCell>
-              <TableCell>
-                <span className="px-3 py-1 bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest rounded-full border border-primary/20">Elite Performance</span>
-              </TableCell>
-              <TableCell className="text-right flex justify-end gap-2 items-center">
-                <button className="bg-surface-container-high text-xs font-bold font-label px-3 py-1.5 rounded-lg border border-outline-variant/20 hover:border-error/50 hover:text-error transition-colors whitespace-nowrap" title="2 hrs auto-checkout if left inside gym">
-                  Check Out
-                </button>
-                <button 
-                  onClick={() => setHistoryMember({ name: "Marcus Sterling", id: "#89211", avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuAi3_iyBYC0XnhMB_kmJyZwxyPodKyDbfanHYqGHO_ImJsaLyXJn68QpSrj2830MuHQLQ7OWARjG23CFP2NsY-Y6weKz5Q67rh8EEAoQTdWoEn-ZEksdaI2o87OEnzyfhvh2GmZOo7R5WsS6DXnp2mfgmuM_kCV9Ngpy9sr5k-SOJrhJZCMySyfNs-o5no7abS71-TJbiTXVpeWoLrJJxdwPbcQxGtTE_QW6_ciY7W2UfBognkgdpEtmN7kHNlm4clEBK2j3VIRFNo" })}
-                  className="text-on-surface-variant hover:text-primary transition-colors p-1.5 rounded-lg hover:bg-surface-container-highest" title="View Visit History (Member Profile)">
-                  <span className="material-symbols-outlined text-lg">calendar_month</span>
-                </button>
-              </TableCell>
-            </TableRow>
-            {/* Row 2 */}
-            <TableRow>
-              <TableCell>
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-lg overflow-hidden flex-shrink-0">
-                    <img className="h-full w-full object-cover" alt="Member" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC-9czXOphA1bL7NFjQJPfozqwBWlgVW_1_gMKYL2ZnKiA0XZNLQG-P07E2-Vtm4KzXlNvoxhk0dS14sx74NZFkMSU4uWb1FIQxtuM0NZm3qnp8tInkOTYVexxm8YwIZB7tILyggOJyPrZRN5ucb9gUVYkaVxfyWapOIh92kwiGikwmj5pNMqdb4HCWzRNY4T-ftq2GCV8ZIV6xHwQ9ZQITZ9GsleEhHOnxpQXQTujf_RSMtwDYRXC4nioL8kAyy117jtEzaJX7bvU" />
-                  </div>
-                  <div>
-                    <p className="font-headline font-bold text-on-surface leading-none">Elena Rodriguez</p>
-                    <p className="text-xs text-on-surface-variant mt-1">ID: #89452</p>
-                  </div>
-                </div>
-              </TableCell>
-              <TableCell>
-                <p className="font-headline font-medium">14:48:05</p>
-                <p className="text-[10px] text-on-surface-variant font-label">6 minutes ago</p>
-              </TableCell>
-              <TableCell>
-                <span className="flex items-center gap-2 text-secondary text-xs font-black font-headline uppercase italic">
-                  <span className="w-1.5 h-1.5 rounded-full bg-secondary shadow-[0_0_8px_#c3f400]"></span>
-                  Checked In
-                </span>
-              </TableCell>
-              <TableCell>
-                <span className="px-3 py-1 bg-tertiary/10 text-tertiary text-[10px] font-black uppercase tracking-widest rounded-full border border-tertiary/20">Standard Hub</span>
-              </TableCell>
-              <TableCell className="text-right flex justify-end gap-2 items-center">
-                <button className="bg-surface-container-high text-xs font-bold font-label px-3 py-1.5 rounded-lg border border-outline-variant/20 hover:border-error/50 hover:text-error transition-colors whitespace-nowrap" title="2 hrs auto-checkout if left inside gym">
-                  Check Out
-                </button>
-                <button 
-                  onClick={() => setHistoryMember({ name: "Elena Rodriguez", id: "#89452", avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuC-9czXOphA1bL7NFjQJPfozqwBWlgVW_1_gMKYL2ZnKiA0XZNLQG-P07E2-Vtm4KzXlNvoxhk0dS14sx74NZFkMSU4uWb1FIQxtuM0NZm3qnp8tInkOTYVexxm8YwIZB7tILyggOJyPrZRN5ucb9gUVYkaVxfyWapOIh92kwiGikwmj5pNMqdb4HCWzRNY4T-ftq2GCV8ZIV6xHwQ9ZQITZ9GsleEhHOnxpQXQTujf_RSMtwDYRXC4nioL8kAyy117jtEzaJX7bvU" })}
-                  className="text-on-surface-variant hover:text-primary transition-colors p-1.5 rounded-lg hover:bg-surface-container-highest" 
-                  title="View Visit History (Member Profile)"
-                >
-                  <span className="material-symbols-outlined text-lg">calendar_month</span>
-                </button>
-              </TableCell>
-            </TableRow>
-            {/* Row 3 */}
-            <TableRow>
-              <TableCell>
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-lg overflow-hidden flex-shrink-0">
-                    <img className="h-full w-full object-cover" alt="Member" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC-ZeZet8IqtKb8uYPMw2woHMG0pVwRQh_F9uKUkVA-EQG5GHtcy9nUpbd0qJhbMWFRTX6pM0oarSggngiTmesh9sa-VcIOJkwsdzx0wgVV3Rm82O9y-7e2jWt49htZuvD7EaYVNIl21JZXA57Qd13F1ZxLFsRv4MQ5G2f8FO_1uc1PHABno4v-J8KDXbMWHZ6CiqVMuMAk9Bd0KFfDqg2gX4HvR18yCHmK09aGBL4taO9cHpXxkZK_AS1nB5bH-u_AavBCBZZFF6w" />
-                  </div>
-                  <div>
-                    <p className="font-headline font-bold text-on-surface leading-none">Jordan Kovic</p>
-                    <p className="text-xs text-on-surface-variant mt-1">ID: #89110</p>
-                  </div>
-                </div>
-              </TableCell>
-              <TableCell>
-                <p className="font-headline font-medium">14:45:12</p>
-                <p className="text-[10px] text-on-surface-variant font-label">9 minutes ago</p>
-              </TableCell>
-              <TableCell>
-                <span className="flex items-center gap-2 text-error text-xs font-black font-headline uppercase italic">
-                  <span className="w-1.5 h-1.5 rounded-full bg-error shadow-[0_0_8px_#ff716c]"></span>
-                  Flagged Account
-                </span>
-              </TableCell>
-              <TableCell>
-                <span className="px-3 py-1 bg-surface-container-highest text-on-surface-variant text-[10px] font-black uppercase tracking-widest rounded-full border border-white/5">Trial Membership</span>
-              </TableCell>
-              <TableCell className="text-right flex justify-end gap-2 items-center">
-                <button className="bg-error/10 text-error text-[10px] font-black font-headline px-3 py-1 rounded border border-error/20 hover:bg-error/20 transition-colors uppercase tracking-widest whitespace-nowrap">RESOLVE</button>
-                <button 
-                  onClick={() => setHistoryMember({ name: "Jordan Kovic", id: "#89110", avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuC-ZeZet8IqtKb8uYPMw2woHMG0pVwRQh_F9uKUkVA-EQG5GHtcy9nUpbd0qJhbMWFRTX6pM0oarSggngiTmesh9sa-VcIOJkwsdzx0wgVV3Rm82O9y-7e2jWt49htZuvD7EaYVNIl21JZXA57Qd13F1ZxLFsRv4MQ5G2f8FO_1uc1PHABno4v-J8KDXbMWHZ6CiqVMuMAk9Bd0KFfDqg2gX4HvR18yCHmK09aGBL4taO9cHpXxkZK_AS1nB5bH-u_AavBCBZZFF6w" })}
-                  className="text-on-surface-variant hover:text-primary transition-colors p-1.5 rounded-lg hover:bg-surface-container-highest" title="View Visit History (Member Profile)">
-                  <span className="material-symbols-outlined text-lg">calendar_month</span>
-                </button>
-              </TableCell>
-            </TableRow>
+                </TableCell>
+              </TableRow>
+            ) : attendanceData.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center py-12 text-on-surface-variant">
+                  No attendance records found.
+                </TableCell>
+              </TableRow>
+            ) : (
+              attendanceData.map((item) => {
+                const isCheckedIn = item.status === "Present" && !item.checkOutTime;
+                return (
+                  <TableRow key={item.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-lg overflow-hidden flex-shrink-0 bg-surface-container-highest flex items-center justify-center font-bold text-primary">
+                          {item.memberName.charAt(0).toUpperCase() || "M"}
+                        </div>
+                        <div>
+                          <p className="font-headline font-bold text-on-surface leading-none">{item.memberName || "Unknown Member"}</p>
+                          <p className="text-xs text-on-surface-variant mt-1">ID: #{item.id.slice(-5)}</p>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <p className="font-headline font-medium">{formatTime(item.checkInTime)}</p>
+                      <p className="text-[10px] text-on-surface-variant font-label">{formatDate(item.attendanceDate)}</p>
+                    </TableCell>
+                    <TableCell>
+                      <span className={`flex items-center gap-2 text-xs font-black font-headline uppercase italic ${
+                        isCheckedIn || item.status === "Present" ? "text-secondary" : "text-error"
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${
+                          isCheckedIn || item.status === "Present"
+                            ? "bg-secondary shadow-[0_0_8px_#c3f400]"
+                            : "bg-error shadow-[0_0_8px_#ff716c]"
+                        }`}></span>
+                        {isCheckedIn ? "Checked In" : item.status || "Absent"}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="px-3 py-1 bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest rounded-full border border-primary/20">
+                        {item.membershipType || "Member"}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right flex justify-end gap-2 items-center">
+                      {isCheckedIn && (
+                        <button className="bg-surface-container-high text-xs font-bold font-label px-3 py-1.5 rounded-lg border border-outline-variant/20 hover:border-error/50 hover:text-error transition-colors whitespace-nowrap" title="2 hrs auto-checkout if left inside gym">
+                          Check Out
+                        </button>
+                      )}
+                      <button 
+                        onClick={() => setHistoryMember({ name: item.memberName, id: `#${item.id.slice(-5)}`, avatar: "" })}
+                        className="text-on-surface-variant hover:text-primary transition-colors p-1.5 rounded-lg hover:bg-surface-container-highest" 
+                        title="View Visit History (Member Profile)">
+                        <span className="material-symbols-outlined text-lg">calendar_month</span>
+                      </button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
           </TableBody>
         </Table>
         
         {/* Pagination Footer */}
-        <TablePagination />
+        <TablePagination 
+          page={pagination.currentPage}
+          totalPages={pagination.totalPages}
+          totalCount={pagination.totalRecords}
+          limit={pagination.limit}
+          onPageChange={(newPage) => setPage(newPage)}
+          onLimitChange={(newLimit) => {
+            setLimit(newLimit);
+            setPage(1);
+          }}
+        />
       </TableContainer>
 
       {/* System Alerts / Upcoming */}
-      <div className="grid grid-cols-12 gap-6">
+      {/* <div className="grid grid-cols-12 gap-6">
         <div className="col-span-12 md:col-span-6 glass-card bg-surface-container/60 border border-white/5 rounded-2xl p-6 relative">
           <h4 className="font-headline font-black text-xs uppercase tracking-widest text-on-surface-variant mb-6">Upcoming Classes (In 30m)</h4>
           <div className="space-y-4">
@@ -296,7 +340,7 @@ export default function AttendancePage() {
             <button className="text-primary text-[10px] font-black font-headline uppercase tracking-widest hover:underline">View Diagnostics</button>
           </div>
         </div>
-      </div>
+      </div> */}
 
       {/* ---------------------------------------------------- */}
       {/* Employee Attendance & Activity Section */}

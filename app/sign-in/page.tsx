@@ -4,15 +4,34 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import veloceLogo from "@/app/assets/veloceLogo.png";
+import { loginWebUser } from "@/app/api/auth";
 
 export default function SignInPage() {
   const bgRef = useRef<HTMLDivElement>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
   const router = useRouter();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    router.push('/dashboard');
+    setErrorMsg("");
+    setLoading(true);
+
+    try {
+      const res = await loginWebUser({ email, password });
+      if (res.success) {
+        router.push('/dashboard');
+      } else {
+        setErrorMsg(res.message || "Invalid credentials.");
+      }
+    } catch (err: any) {
+      setErrorMsg("An unexpected error occurred. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -67,43 +86,78 @@ export default function SignInPage() {
             <div className="h-[1px] w-12 bg-secondary/30 mt-4"></div>
           </div>
 
-          {/* Login Card */}
-          <div className="premium-glass rounded-2xl p-10">
-            <form onSubmit={handleLogin} className="space-y-8">
-              {/* Email Field */}
-              <div className="space-y-3">
-                <label className="font-label text-[10px] uppercase tracking-[0.2em] text-on-surface-variant/70 ml-1" htmlFor="email">Uplink Identity</label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-on-surface-variant/40">alternate_email</span>
-                  <input className="input-premium w-full rounded-xl py-4 pl-12 pr-4 text-on-surface placeholder:text-outline/30 text-sm tracking-wide" id="email" name="email" placeholder="ADMIN_CREDENTIALS" required type="email" />
+            {/* Login Card */}
+            <div className="premium-glass rounded-2xl p-10">
+              {errorMsg && (
+                <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-medium flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+                  <span className="material-symbols-outlined text-sm">error</span>
+                  <span>{errorMsg}</span>
                 </div>
-              </div>
+              )}
+              <form onSubmit={handleLogin} className="space-y-8">
+                {/* Email Field */}
+                <div className="space-y-3">
+                  <label className="font-label text-[10px] uppercase tracking-[0.2em] text-on-surface-variant/70 ml-1" htmlFor="email">Uplink Identity</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-on-surface-variant/40">alternate_email</span>
+                    <input 
+                      className="input-premium w-full rounded-xl py-4 pl-12 pr-4 text-on-surface placeholder:text-outline/30 text-sm tracking-wide" 
+                      id="email" 
+                      name="email" 
+                      placeholder="ADMIN_CREDENTIALS" 
+                      required 
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
+                  </div>
+                </div>
 
-              {/* Password Field */}
-              <div className="space-y-3">
-                <label className="font-label text-[10px] uppercase tracking-[0.2em] text-on-surface-variant/70 ml-1" htmlFor="password">Security Cipher</label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-on-surface-variant/40">lock</span>
-                  <input className="input-premium w-full rounded-xl py-4 pl-12 pr-12 text-on-surface placeholder:text-outline/30 text-sm tracking-wide" id="password" name="password" placeholder="••••••••••••" required type={showPassword ? "text" : "password"} />
-                  <button
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40 hover:text-secondary transition-colors"
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
+                {/* Password Field */}
+                <div className="space-y-3">
+                  <label className="font-label text-[10px] uppercase tracking-[0.2em] text-on-surface-variant/70 ml-1" htmlFor="password">Security Cipher</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-on-surface-variant/40">lock</span>
+                    <input 
+                      className="input-premium w-full rounded-xl py-4 pl-12 pr-12 text-on-surface placeholder:text-outline/30 text-sm tracking-wide" 
+                      id="password" 
+                      name="password" 
+                      placeholder="••••••••••••" 
+                      required 
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
+                    <button
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40 hover:text-secondary transition-colors"
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      <span className="material-symbols-outlined text-xl">
+                        {showPassword ? "visibility" : "visibility_off"}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Action Section */}
+                <div className="pt-4">
+                  <button 
+                    className="neon-glow-btn w-full bg-secondary text-on-secondary font-display font-bold text-sm tracking-[0.15em] py-5 rounded-xl active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2" 
+                    type="submit"
+                    disabled={loading}
                   >
-                    <span className="material-symbols-outlined text-xl">
-                      {showPassword ? "visibility" : "visibility_off"}
-                    </span>
+                    {loading ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-on-secondary border-t-transparent rounded-full animate-spin"></span>
+                        AUTHENTICATING...
+                      </>
+                    ) : (
+                      "INITIALIZE SESSION"
+                    )}
                   </button>
                 </div>
-              </div>
-
-              {/* Action Section */}
-              <div className="pt-4">
-                <button className="neon-glow-btn w-full bg-secondary text-on-secondary font-display font-bold text-sm tracking-[0.15em] py-5 rounded-xl active:scale-[0.98]" type="submit">
-                  INITIALIZE SESSION
-                </button>
-              </div>
-            </form>
+              </form>
 
             <div className="mt-10 flex flex-col items-center gap-6">
               <a className="text-xs text-on-surface-variant/50 hover:text-secondary transition-colors tracking-widest uppercase" href="#">Reset Credentials</a>
