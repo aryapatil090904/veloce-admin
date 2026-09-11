@@ -192,7 +192,7 @@ export default function BookingsPage() {
                   </div>
                 </td>
                 <td className="px-6 py-4 text-right">
-                  <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex justify-end gap-2">
                     <button className="p-2 hover:bg-primary/20 hover:text-primary rounded-lg transition-colors" title="Check-in Manually">
                       <span className="material-symbols-outlined text-lg">how_to_reg</span>
                     </button>
@@ -231,7 +231,7 @@ export default function BookingsPage() {
                   </div>
                 </td>
                 <td className="px-6 py-4 text-right">
-                  <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex justify-end gap-2">
                     <button className="p-2 hover:bg-primary/20 hover:text-primary rounded-lg transition-colors" title="Check-in Manually">
                       <span className="material-symbols-outlined text-lg">how_to_reg</span>
                     </button>
@@ -270,7 +270,7 @@ export default function BookingsPage() {
                   </div>
                 </td>
                 <td className="px-6 py-4 text-right">
-                  <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex justify-end gap-2">
                     <button className="p-2 hover:bg-primary/20 hover:text-primary rounded-lg transition-colors" title="Check-in Manually">
                       <span className="material-symbols-outlined text-lg">how_to_reg</span>
                     </button>

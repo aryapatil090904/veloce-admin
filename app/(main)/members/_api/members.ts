@@ -59,17 +59,23 @@ export interface WaiverSession {
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/v1';
 
 // POST: Submit digital waiver
-export async function submitWaiver(waiverId: string, signature: string, photoUrl?: string): Promise<boolean> {
+export async function submitWaiver(waiverId: string, signature: string, photoUrl?: string): Promise<{ success: boolean; message?: string }> {
   try {
-    const response = await api.post<{ success: boolean; data: WaiverSession }>('/member/submit-waiver', {
+    const response = await api.post<{ success: boolean; message?: string; data: WaiverSession }>('/member/submit-waiver', {
       waiverId,
       signature,
       photoUrl,
     });
-    return response.data.success;
-  } catch (error) {
+    return {
+      success: response.data.success,
+      message: response.data.message,
+    };
+  } catch (error: any) {
     console.error("Error submitting waiver via Axios:", error);
-    return false;
+    return {
+      success: false,
+      message: error?.response?.data?.message || "Failed to submit waiver. Please try again.",
+    };
   }
 }
 

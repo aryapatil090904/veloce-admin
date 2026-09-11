@@ -44,3 +44,11 @@ export async function loginWebUser(payload: WebLoginPayload): Promise<WebLoginRe
     };
   }
 }
+
+export function logoutUser(): void {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = '/sign-in';
+  }
+}

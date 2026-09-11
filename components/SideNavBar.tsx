@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import veloceLogo from "@/app/assets/veloceLogo.png";
+import { logoutUser } from "@/app/api/auth";
 
 export default function SideNavBar() {
   const pathname = usePathname();
@@ -64,6 +65,13 @@ export default function SideNavBar() {
           <span className="material-symbols-outlined text-on-surface-variant group-hover:text-primary">help_outline</span>
           <span className="font-label tracking-tight text-on-surface-variant group-hover:text-primary">Support</span>
         </Link>
+        <button 
+          onClick={logoutUser}
+          className="w-full text-left flex items-center gap-4 py-2 px-4 rounded-xl transition-colors hover:bg-red-500/10 text-red-400/80 hover:text-red-400 group"
+        >
+          <span className="material-symbols-outlined shrink-0 text-red-400/80 group-hover:text-red-400">logout</span>
+          <span className="font-label tracking-tight font-medium">Logout</span>
+        </button>
       </div>
       </div>
     </aside>

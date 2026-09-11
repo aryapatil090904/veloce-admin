@@ -18,7 +18,11 @@ function WaiverForm() {
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setPhotoUrl(URL.createObjectURL(file));
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPhotoUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -34,22 +38,16 @@ function WaiverForm() {
 
     try {
       // Submit digital waiver via backend API (Axios POST /v1/member/submit-waiver)
-      const success = await submitWaiver(waiverId, signature, photoUrl);
-      
-      // Fallback local notification trigger for instant cross-tab sync if on same browser
-      localStorage.setItem(`waiver_${waiverId}_status`, "signed");
-      localStorage.setItem(`waiver_${waiverId}_signature`, signature);
-      window.dispatchEvent(new Event("storage"));
+      const res = await submitWaiver(waiverId, signature, photoUrl);
 
-      if (success) {
+      if (res.success) {
         setIsSubmitted(true);
       } else {
-        // Even if server is temporarily unreachable, show signed UI so client is not stuck
-        setIsSubmitted(true);
+        setErrorMsg(res.message || "Failed to submit waiver. Please try again.");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Waiver submission error:", err);
-      setIsSubmitted(true);
+      setErrorMsg("An unexpected error occurred. Please try again.");
     } finally {
       setIsSubmitting(false);
     }

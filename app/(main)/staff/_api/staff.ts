@@ -1,5 +1,10 @@
 import api from '@/lib/axios';
 
+export interface AssignedClient {
+  memberId: string;
+  name: string;
+}
+
 export interface StaffMember {
   _id?: string;
   id?: string;
@@ -10,8 +15,10 @@ export interface StaffMember {
   shift: "Morning" | "Evening" | "Night" | string;
   status: "Active" | "On Leave" | "Inactive" | string;
   avatar?: string;
+  governmentIdUrl?: string;
+  cprCertUrl?: string;
   bio?: string;
-  assignedClients: string[];
+  assignedClients: AssignedClient[];
   createdAt?: string;
   updatedAt?: string;
 }
@@ -124,11 +131,12 @@ export async function updateStaff(id: string, staffData: Partial<StaffMember>): 
 }
 
 // POST: Assign a client to a staff member
-export async function assignClientToStaff(staffId: string, clientName: string): Promise<StaffMember | null> {
+export async function assignClientToStaff(staffId: string, clientIdentifier: string, memberId?: string): Promise<StaffMember | null> {
   try {
     const response = await api.post<{ success: boolean; data: StaffMember }>('/employee/assign-client', {
       staffId,
-      clientName,
+      memberId: memberId || clientIdentifier,
+      clientName: clientIdentifier,
     });
     return response.data.data;
   } catch (error) {

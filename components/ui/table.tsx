@@ -4,7 +4,7 @@ const TableContainer = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTM
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={`glass-card rounded-xl overflow-hidden border border-outline-variant/10 ${className || ""}`}
+      className={`glass-card rounded-xl border border-outline-variant/10 ${className || ""}`}
       {...props}
     />
   )

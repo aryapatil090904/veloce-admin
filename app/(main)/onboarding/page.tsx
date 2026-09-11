@@ -75,14 +75,6 @@ export default function OnboardingPage() {
           setPhotoUploaded(true);
         }
         setShowQRModal(false);
-      } else {
-        const localStatus = localStorage.getItem(`waiver_${waiverId}_status`);
-        if (localStatus === "signed") {
-          setWaiverStatus("signed");
-          setCustomerSignature(localStorage.getItem(`waiver_${waiverId}_signature`) || "");
-          setPhotoUploaded(true);
-          setShowQRModal(false);
-        }
       }
     };
 

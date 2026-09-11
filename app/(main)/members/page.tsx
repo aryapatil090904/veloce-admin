@@ -322,11 +322,23 @@ export default function MembersPage() {
                     <p className="text-[10px] text-on-surface-variant uppercase tracking-wider">{member.lastCheckInLocation || "Downtown Hub"}</p>
                   </TableCell>
                   <TableCell className="text-right">
-                    <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button className="p-2 hover:bg-primary/20 hover:text-primary rounded-lg transition-colors" title="Send SMS"><span className="material-symbols-outlined text-lg">sms</span></button>
-                      <button className="p-2 hover:bg-primary/20 hover:text-primary rounded-lg transition-colors" title="Send Email"><span className="material-symbols-outlined text-lg">mail</span></button>
-                      <button className="p-2 hover:bg-primary/20 hover:text-primary rounded-lg transition-colors" title="View Profile"><span className="material-symbols-outlined text-lg">visibility</span></button>
-                      <button className="p-2 hover:bg-primary/20 hover:text-primary rounded-lg transition-colors" title="Edit Member"><span className="material-symbols-outlined text-lg">edit</span></button>
+                    <div className="flex justify-end gap-2">
+                      <button className="p-2 hover:bg-primary/20 hover:text-primary text-on-surface-variant rounded-lg transition-colors" title="Send SMS"><span className="material-symbols-outlined text-lg">sms</span></button>
+                      <button className="p-2 hover:bg-primary/20 hover:text-primary text-on-surface-variant rounded-lg transition-colors" title="Send Email"><span className="material-symbols-outlined text-lg">mail</span></button>
+                      <Link
+                        href={`/members/${member._id || member.id}`}
+                        className="p-2 hover:bg-primary/20 hover:text-primary text-on-surface-variant rounded-lg transition-colors flex items-center justify-center"
+                        title="View Profile"
+                      >
+                        <span className="material-symbols-outlined text-lg">visibility</span>
+                      </Link>
+                      <Link
+                        href={`/members/${member._id || member.id}?edit=true`}
+                        className="p-2 hover:bg-primary/20 hover:text-primary text-on-surface-variant rounded-lg transition-colors flex items-center justify-center"
+                        title="Edit Member"
+                      >
+                        <span className="material-symbols-outlined text-lg">edit</span>
+                      </Link>
                     </div>
                   </TableCell>
                 </TableRow>
