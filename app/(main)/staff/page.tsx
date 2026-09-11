@@ -80,6 +80,7 @@ export default function StaffPage() {
   const idFileInputRef = useRef<HTMLInputElement>(null);
   const cprFileInputRef = useRef<HTMLInputElement>(null);
   const headshotFileInputRef = useRef<HTMLInputElement>(null);
+  const editAvatarInputRef = useRef<HTMLInputElement>(null);
   const [idFile, setIdFile] = useState<File | null>(null);
   const [cprFile, setCprFile] = useState<File | null>(null);
   const [headshotFile, setHeadshotFile] = useState<File | null>(null);
@@ -92,6 +93,7 @@ export default function StaffPage() {
   const [isUpdatingStaff, setIsUpdatingStaff] = useState(false);
   const [deletingStaffId, setDeletingStaffId] = useState<string | null>(null);
   const [isDeletingStaff, setIsDeletingStaff] = useState(false);
+  const [lightboxImage, setLightboxImage] = useState<{ url: string; title?: string } | null>(null);
 
   // Close action dropdown menu on click outside
   useEffect(() => {
@@ -103,6 +105,22 @@ export default function StaffPage() {
     window.addEventListener('click', handleClickOutside);
     return () => window.removeEventListener('click', handleClickOutside);
   }, [activeActionMenuId]);
+
+  // Handle Edit Avatar change & remove
+  const handleEditAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const base64 = await fileToBase64(file);
+      setEditingStaff(prev => prev ? { ...prev, avatar: base64 } : null);
+    }
+  };
+
+  const handleRemoveEditAvatar = () => {
+    setEditingStaff(prev => prev ? { ...prev, avatar: "" } : null);
+    if (editAvatarInputRef.current) {
+      editAvatarInputRef.current.value = "";
+    }
+  };
 
   // Handle Edit Submit
   const handleEditStaffSubmit = async (e: React.FormEvent) => {
@@ -118,6 +136,7 @@ export default function StaffPage() {
         status: editingStaff.status,
         shift: editingStaff.shift,
         bio: editingStaff.bio,
+        avatar: editingStaff.avatar,
       });
 
       if (updated) {
@@ -980,7 +999,18 @@ export default function StaffPage() {
           <div className="glass-card p-8 rounded-2xl w-full max-w-lg border border-outline-variant/20 shadow-2xl animate-in zoom-in-95 duration-300">
             <div className="flex justify-between items-start mb-6">
               <div className="flex items-center gap-4">
-                <div className="h-14 w-14 rounded-full overflow-hidden bg-surface-container-high flex items-center justify-center border-2 border-primary/30">
+                <div 
+                  onClick={() => {
+                    if (viewingStaff.avatar) {
+                      setLightboxImage({
+                        url: viewingStaff.avatar,
+                        title: `${viewingStaff.name}'s Photo`
+                      });
+                    }
+                  }}
+                  className={`h-14 w-14 rounded-full overflow-hidden bg-surface-container-high flex items-center justify-center border-2 border-primary/30 ${viewingStaff.avatar ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+                  title={viewingStaff.avatar ? "Click to view full photo" : undefined}
+                >
                   {viewingStaff.avatar ? (
                     <img className="h-full w-full object-cover" alt={viewingStaff.name} src={viewingStaff.avatar} />
                   ) : (
@@ -1035,26 +1065,30 @@ export default function StaffPage() {
                   <p className="text-xs font-label uppercase tracking-widest text-on-surface-variant mb-2">Compliance Documents</p>
                   <div className="grid grid-cols-2 gap-3">
                     {viewingStaff.governmentIdUrl && (
-                      <a 
-                        href={viewingStaff.governmentIdUrl} 
-                        target="_blank" 
-                        rel="noreferrer"
-                        className="flex items-center gap-2 p-3 bg-surface-container-low hover:bg-surface-container-high rounded-xl border border-outline-variant/30 text-xs font-bold text-primary transition-colors"
+                      <button 
+                        type="button"
+                        onClick={() => setLightboxImage({
+                          url: viewingStaff.governmentIdUrl!,
+                          title: `${viewingStaff.name}'s Government ID`
+                        })}
+                        className="flex items-center gap-2 p-3 bg-surface-container-low hover:bg-surface-container-high rounded-xl border border-outline-variant/30 text-xs font-bold text-primary transition-colors text-left cursor-pointer w-full"
                       >
                         <span className="material-symbols-outlined text-base">badge</span>
                         Government ID
-                      </a>
+                      </button>
                     )}
                     {viewingStaff.cprCertUrl && (
-                      <a 
-                        href={viewingStaff.cprCertUrl} 
-                        target="_blank" 
-                        rel="noreferrer"
-                        className="flex items-center gap-2 p-3 bg-surface-container-low hover:bg-surface-container-high rounded-xl border border-outline-variant/30 text-xs font-bold text-secondary transition-colors"
+                      <button 
+                        type="button"
+                        onClick={() => setLightboxImage({
+                          url: viewingStaff.cprCertUrl!,
+                          title: `${viewingStaff.name}'s CPR / Fitness Cert`
+                        })}
+                        className="flex items-center gap-2 p-3 bg-surface-container-low hover:bg-surface-container-high rounded-xl border border-outline-variant/30 text-xs font-bold text-secondary transition-colors text-left cursor-pointer w-full"
                       >
                         <span className="material-symbols-outlined text-base">medical_services</span>
                         CPR / Fitness Cert
-                      </a>
+                      </button>
                     )}
                   </div>
                 </div>
@@ -1104,6 +1138,72 @@ export default function StaffPage() {
             </div>
 
             <form onSubmit={handleEditStaffSubmit} className="space-y-4">
+              {/* Profile Photo Editor */}
+              <div className="flex flex-col items-center justify-center pb-2">
+                <div className="relative group">
+                  <div className="w-20 h-20 rounded-full overflow-hidden bg-surface-container-high border-2 border-primary/40 flex items-center justify-center shadow-lg">
+                    {editingStaff.avatar ? (
+                      <img 
+                        src={editingStaff.avatar} 
+                        alt={editingStaff.name} 
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="material-symbols-outlined text-3xl text-on-surface-variant">person</span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => editAvatarInputRef.current?.click()}
+                    className="absolute inset-0 bg-black/60 rounded-full opacity-0 group-hover:opacity-100 transition-all flex flex-col items-center justify-center text-white cursor-pointer"
+                    title="Change Profile Photo"
+                  >
+                    <span className="material-symbols-outlined text-xl text-primary">add_a_photo</span>
+                    <span className="text-[9px] font-label font-bold uppercase tracking-wider mt-0.5">Change</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => editAvatarInputRef.current?.click()}
+                    className="absolute -bottom-1 -right-1 bg-primary text-on-primary p-1.5 rounded-full shadow-md hover:scale-110 transition-transform cursor-pointer flex items-center justify-center border border-surface"
+                    title="Upload new photo"
+                  >
+                    <span className="material-symbols-outlined text-xs font-bold">photo_camera</span>
+                  </button>
+                </div>
+
+                <input 
+                  type="file" 
+                  ref={editAvatarInputRef} 
+                  accept="image/*" 
+                  className="hidden" 
+                  onChange={handleEditAvatarChange} 
+                />
+
+                <div className="flex items-center gap-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => editAvatarInputRef.current?.click()}
+                    className="text-[11px] font-label font-bold text-primary hover:underline cursor-pointer"
+                  >
+                    {editingStaff.avatar ? "Change Photo" : "Upload Photo"}
+                  </button>
+                  {editingStaff.avatar && (
+                    <>
+                      <span className="text-on-surface-variant/40 text-xs">•</span>
+                      <button
+                        type="button"
+                        onClick={handleRemoveEditAvatar}
+                        className="text-[11px] font-label font-bold text-error hover:underline cursor-pointer"
+                      >
+                        Remove
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-label text-on-surface mb-1.5">Name</label>
                 <input 
@@ -1243,6 +1343,48 @@ export default function StaffPage() {
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Image / Document Lightbox Modal */}
+      {lightboxImage && (
+        <div
+          onClick={() => setLightboxImage(null)}
+          className="fixed inset-0 z-[60] flex flex-col items-center justify-center p-4 md:p-8 bg-black/90 backdrop-blur-md animate-in fade-in duration-200"
+        >
+          {/* Top Bar */}
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-4xl flex items-center justify-between pb-4 text-white z-10"
+          >
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary">photo_size_select_actual</span>
+              <span className="font-headline font-bold text-sm tracking-wide">
+                {lightboxImage.title || "Document Preview"}
+              </span>
+            </div>
+            <div>
+              <button
+                onClick={() => setLightboxImage(null)}
+                className="p-2 bg-white/10 hover:bg-white/20 text-white hover:text-error rounded-xl transition-colors border border-white/10 flex items-center justify-center cursor-pointer"
+                title="Close"
+              >
+                <span className="material-symbols-outlined text-xl">close</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Image Container */}
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative max-w-4xl max-h-[85vh] flex items-center justify-center overflow-hidden rounded-2xl shadow-2xl border border-white/10 bg-black/40 animate-in zoom-in-95 duration-200"
+          >
+            <img
+              src={lightboxImage.url}
+              alt={lightboxImage.title || "Preview"}
+              className="max-w-full max-h-[80vh] object-contain select-none"
+            />
           </div>
         </div>
       )}
